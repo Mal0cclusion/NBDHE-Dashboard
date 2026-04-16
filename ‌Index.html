@@ -20,7 +20,7 @@
   ============================================================
 -->
 <script>
-  const DRIVE_FILE_ID = "1a0Ghf_faahRCvAz6YW-gyIEF2AZ50PH_";
+  const DRIVE_FILE_ID = "YOUR_GOOGLE_DRIVE_FILE_ID_HERE";
 </script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -224,7 +224,9 @@ async function loadData() {
   }
 
   // Google Drive direct download URL
-  const url = `https://docs.google.com/spreadsheets/d/${DRIVE_FILE_ID}/export?format=xlsx`;
+  const directUrl = `https://docs.google.com/spreadsheets/d/${DRIVE_FILE_ID}/export?format=xlsx`;
+  // CORS proxy allows browser to fetch the file from an external site
+  const url = `https://corsproxy.io/?${encodeURIComponent(directUrl)}`;
   document.getElementById('testUrl').textContent = url;
   show('loadingScreen');
 
