@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NBDHE Performance Dashboard</title>
+
+<!--
+  ============================================================
+  SETUP: Replace YOUR_GOOGLE_DRIVE_FILE_ID_HERE below with
+  the file ID from your Google Drive sharing link.
+
+  How to get it:
+  1. Right-click your Excel file in Google Drive -> Share
+  2. Set to "Anyone with the link" -> Viewer -> Copy link
+  3. The link looks like:
+     https://drive.google.com/file/d/ABCDEFG1234/view?usp=sharing
+  4. Copy just the ID between /d/ and /view  (e.g. ABCDEFG1234)
+  5. Paste it below, replacing YOUR_GOOGLE_DRIVE_FILE_ID_HERE
+  ============================================================
+-->
+<script>
+  const DRIVE_FILE_ID = "1a0Ghf_faahRCvAz6YW-gyIEF2AZ50PH_";
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Gantari:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+
+<style>
+  :root {
+    --navy:#003366;--white:#ffffff;--blue:#1578C1;--gold:#F4BB33;
+    --bg:#f0f4f8;--surface:#ffffff;--surface2:#e4ecf4;
+    --body-text:#444444;--muted:#6b7a8d;--border:#CCCCCC;
+    --green-light:#ddeef9;--red:#c0411e;--red-light:#fceee9;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Gantari',sans-serif;background:var(--bg);color:var(--body-text);min-height:100vh;}
+
+  /* HEADER */
+  .header{background:var(--navy);color:var(--white);padding:2rem 2.5rem 1.5rem;position:relative;overflow:hidden;border-bottom:4px solid var(--gold);}
+  .header::before{content:'';position:absolute;top:-50px;right:-50px;width:220px;height:220px;border-radius:50%;background:rgba(21,120,193,0.15);}
+  .header::after{content:'';position:absolute;bottom:-30px;right:120px;width:120px;height:120px;border-radius:50%;background:rgba(244,187,51,0.08);}
+  .header-top{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:1rem;position:relative;z-index:1;}
+  .header h1{font-size:28px;font-weight:700;letter-spacing:-0.5px;color:var(--white);}
+  .header p{font-size:13px;color:rgba(255,255,255,0.6);margin-top:6px;font-weight:300;}
+  .last-updated{font-size:11px;font-weight:500;color:var(--navy);background:var(--gold);border-radius:20px;padding:4px 14px;white-space:nowrap;align-self:center;}
+
+  /* STATUS SCREENS */
+  .status-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:65vh;gap:16px;padding:2rem;text-align:center;}
+  .spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin 0.8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .status-title{font-size:17px;font-weight:600;color:var(--navy);}
+  .status-sub{font-size:13px;color:var(--muted);max-width:420px;line-height:1.7;}
+  .setup-box{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--gold);border-radius:10px;padding:1.5rem;max-width:520px;text-align:left;}
+  .setup-box h3{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--navy);margin-bottom:10px;}
+  .setup-box ol{padding-left:1.2rem;font-size:13px;color:var(--muted);line-height:2.2;}
+  .setup-box code{background:var(--surface2);padding:2px 7px;border-radius:4px;font-size:12px;color:var(--navy);font-weight:600;}
+  .retry-btn{font-family:'Gantari',sans-serif;font-size:13px;font-weight:600;background:var(--navy);color:#fff;border:none;border-radius:8px;padding:9px 24px;cursor:pointer;transition:background 0.15s;}
+  .retry-btn:hover{background:var(--blue);}
+
+  /* MAIN */
+  .main{padding:2rem 2.5rem;display:none;}
+  .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:2rem;}
+  .metric-card{background:var(--surface);border-radius:10px;padding:1.1rem 1.25rem;border:1px solid var(--border);border-top:3px solid var(--navy);transition:box-shadow 0.15s,transform 0.15s;}
+  .metric-card:hover{box-shadow:0 6px 20px rgba(0,51,102,0.1);transform:translateY(-1px);}
+  .metric-label{font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:6px;font-weight:600;}
+  .metric-value{font-size:26px;font-weight:300;color:var(--navy);}
+  .metric-sub{font-size:11px;color:var(--muted);margin-top:4px;}
+  .val-pos{color:var(--blue);}
+  .val-neg{color:var(--red);}
+  .val-text{font-size:15px;font-weight:600;padding-top:5px;}
+  .badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:20px;font-weight:600;margin-top:4px;}
+  .badge-pos{background:var(--green-light);color:var(--blue);}
+  .badge-neg{background:var(--red-light);color:var(--red);}
+  .section{margin-bottom:2.5rem;}
+  .section-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:8px;}
+  .section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--navy);padding-left:10px;border-left:3px solid var(--gold);}
+  .chart-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.25rem;box-shadow:0 1px 4px rgba(0,51,102,0.06);}
+  select{font-family:'Gantari',sans-serif;font-size:13px;font-weight:500;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--navy);cursor:pointer;outline:none;transition:border-color 0.15s;}
+  select:focus{border-color:var(--blue);}
+  select:hover{border-color:var(--navy);}
+  .legend{display:flex;flex-wrap:wrap;gap:16px;font-size:12px;color:var(--muted);margin-bottom:12px;font-weight:500;}
+  .legend-item{display:flex;align-items:center;gap:6px;}
+  .legend-dot{width:10px;height:10px;border-radius:2px;flex-shrink:0;}
+  .data-table{width:100%;border-collapse:collapse;font-size:13px;}
+  .data-table th{font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--white);font-weight:600;padding:10px 12px;text-align:left;background:var(--navy);}
+  .data-table th:first-child{border-radius:6px 0 0 0;}
+  .data-table th:last-child{border-radius:0 6px 0 0;}
+  .data-table td{padding:9px 12px;border-bottom:1px solid rgba(0,51,102,0.06);color:var(--body-text);}
+  .data-table tr:last-child td{border-bottom:none;}
+  .data-table tr:hover td{background:var(--surface2);}
+  .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:12px;font-weight:600;}
+  .pill-pos{background:var(--green-light);color:var(--blue);}
+  .pill-neg{background:var(--red-light);color:var(--red);}
+  .footer{padding:1.25rem 2.5rem;font-size:11px;background:var(--navy);color:rgba(255,255,255,0.45);line-height:1.8;display:none;}
+
+  @media(max-width:640px){
+    .header,.main,.footer{padding-left:1rem;padding-right:1rem;}
+    .header h1{font-size:22px;}
+    .metric-value{font-size:22px;}
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-top">
+    <div>
+      <h1>NBDHE Performance Dashboard</h1>
+      <p>D-value scores vs. national average &middot; Rolling 12-month reporting periods</p>
+    </div>
+    <div class="last-updated" id="lastUpdated" style="display:none;"></div>
+  </div>
+</div>
+
+<!-- LOADING -->
+<div class="status-screen" id="loadingScreen">
+  <div class="spinner"></div>
+  <div class="status-title">Loading latest data&hellip;</div>
+  <div class="status-sub">Fetching your Excel file from Google Drive.</div>
+</div>
+
+<!-- SETUP (file ID not set) -->
+<div class="status-screen" id="setupScreen" style="display:none;">
+  <div class="status-title">One-time setup required</div>
+  <div class="status-sub">Add your Google Drive file ID to this HTML file to connect it to your live Excel data.</div>
+  <div class="setup-box">
+    <h3>How to connect your Excel file</h3>
+    <ol>
+      <li>Upload <code>NBDHE_Subject_Breakdown.xlsx</code> to Google Drive</li>
+      <li>Right-click the file &rarr; <strong>Share</strong> &rarr; set to <strong>"Anyone with the link"</strong> &rarr; Viewer &rarr; Copy link</li>
+      <li>Your link looks like: <code>docs.google.com/spreadsheets/d/<strong>FILEID</strong>/edit</code></li>
+      <li>Copy just the bold part between <code>/d/</code> and <code>/edit</code></li>
+      <li>Open this HTML in a text editor, find the line:<br><code>const DRIVE_FILE_ID = "YOUR_GOOGLE_DRIVE_FILE_ID_HERE";</code></li>
+      <li>Replace <code>YOUR_GOOGLE_DRIVE_FILE_ID_HERE</code> with your file ID</li>
+      <li>Save and re-upload this HTML to Google Sites</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ERROR -->
+<div class="status-screen" id="errorScreen" style="display:none;">
+  <div class="status-title">Could not load data</div>
+  <div class="status-sub" id="errorMsg">There was a problem fetching your Excel file from Google Drive.</div>
+  <button class="retry-btn" onclick="loadData()">Try again</button>
+  <div class="setup-box">
+    <h3>Troubleshooting</h3>
+    <ol>
+      <li>Make sure the file is shared as <strong>"Anyone with the link"</strong></li>
+      <li>Double-check the file ID in the HTML matches your Drive file</li>
+      <li>Try opening this URL in your browser to test:<br>
+        <code id="testUrl" style="word-break:break-all;font-size:11px;"></code>
+      </li>
+      <li>If it prompts a download, the ID is correct &mdash; a CORS error may need Google Sites to resolve</li>
+    </ol>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div class="main" id="mainContent">
+  <div class="metrics" id="metricsRow"></div>
+
+  <div class="section">
+    <div class="section-header"><span class="section-title">Overall NBDHE Score &mdash; Full History</span></div>
+    <div class="chart-card">
+      <div style="position:relative;height:200px;">
+        <canvas id="overallChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <span class="section-title">Subject Performance</span>
+      <select id="subjectSelect"><option value="all">All subjects &mdash; latest period</option></select>
+    </div>
+    <div class="chart-card">
+      <div style="position:relative;" id="subjectChartWrap">
+        <canvas id="subjectChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header"><span class="section-title">Year-over-Year Comparison</span></div>
+    <div class="chart-card">
+      <div class="legend" id="yoyLegend"></div>
+      <div style="position:relative;height:300px;">
+        <canvas id="yoyChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header"><span class="section-title">Latest Period Summary</span></div>
+    <div class="chart-card" style="overflow-x:auto;">
+      <table class="data-table" id="summaryTable"></table>
+    </div>
+  </div>
+</div>
+
+<div class="footer" id="footerNote">
+  * Subjects marked with an asterisk contain relatively few questions &mdash; interpret with caution. &nbsp;|&nbsp;
+  D-values = standard deviations from national mean (0 = national average).
+</div>
+
+<script>
+const BLUE='#1578C1', PURPLE='#003366', GOLD='#F4BB33', RED='#c0411e';
+let SC=null, OC=null, YC=null;
+
+const TT={
+  callbacks:{title:i=>i[0].label, label:i=>` ${i.dataset.label||'d-value'}: ${Number(i.raw).toFixed(2)}`},
+  backgroundColor:'#003366', titleColor:'rgba(255,255,255,0.6)', bodyColor:'#ffffff',
+  padding:10, cornerRadius:6, borderWidth:0
+};
+
+// ── Load from Google Drive ────────────────────────────────────
+async function loadData() {
+  if (!DRIVE_FILE_ID || DRIVE_FILE_ID === 'YOUR_GOOGLE_DRIVE_FILE_ID_HERE') {
+    show('setupScreen'); return;
+  }
+
+  // Google Drive direct download URL
+  // Try multiple proxies in case one fails
+  const directUrl = `https://docs.google.com/spreadsheets/d/${DRIVE_FILE_ID}/export?format=xlsx&id=${DRIVE_FILE_ID}`;
+  const proxies = [
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(directUrl)}`,
+    `https://corsproxy.io/?${encodeURIComponent(directUrl)}`,
+    `https://thingproxy.freeboard.io/fetch/${directUrl}`
+  ];
+  document.getElementById('testUrl').textContent = url;
+  show('loadingScreen');
+
+  let lastError = null;
+  for (const proxyUrl of proxies) {
+    try {
+      console.log('Trying:', proxyUrl);
+      const resp = await fetch(proxyUrl);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const buf = await resp.arrayBuffer();
+      // Check we got an xlsx file not an html page
+      const arr = new Uint8Array(buf);
+      const isPK = arr[0]===80 && arr[1]===75; // xlsx files start with PK
+      if (!isPK) throw new Error('Got an HTML page instead of Excel file — proxy redirected');
+      const wb = XLSX.read(arr, {type:'array'});
+      const data = parseWorkbook(wb);
+      render(data);
+      return; // success - stop trying
+    } catch(err) {
+      console.warn('Proxy failed:', err.message);
+      lastError = err;
+    }
+  }
+  // All proxies failed
+  document.getElementById('errorMsg').textContent = lastError ? lastError.message : 'All fetch attempts failed.';
+  show('errorScreen');
+}
+
+function show(id) {
+  ['loadingScreen','setupScreen','errorScreen','mainContent'].forEach(s => {
+    document.getElementById(s).style.display = (s === id) ? (s === 'mainContent' ? 'block' : 'flex') : 'none';
+  });
+}
+
+// ── Parse workbook ────────────────────────────────────────────
+function parseWorkbook(wb) {
+  const sheet = wb.Sheets['NBDHE Summary Reports'];
+  if (!sheet) throw new Error('Sheet "NBDHE Summary Reports" not found. Check you are using the correct file.');
+  const rows    = XLSX.utils.sheet_to_json(sheet, {header:1, defval:null});
+  const periods = rows[0].slice(1).filter(Boolean);
+  const subjects={}, overall=[], studentCounts=[];
+
+  for (let r=1; r<rows.length; r++) {
+    const row=rows[r];
+    if (!row||!row[0]) continue;
+    const name=String(row[0]).trim();
+    const vals=periods.map((_,i)=>{const v=row[i+1]; return(v===null||v===undefined||v==='')?null:Number(v);});
+    if (name.toLowerCase().includes('overall'))          { vals.forEach((v,i)=>overall[i]=v); }
+    else if (name.toLowerCase().includes('current students')) { vals.forEach((v,i)=>studentCounts[i]=v); }
+    else if (!name.toLowerCase().includes('students reported') && !name.startsWith('*')) { subjects[name]=vals; }
+  }
+  if (!Object.keys(subjects).length) throw new Error('Could not find subject data. Check the file format.');
+  return {periods, subjects, overall, studentCounts};
+}
+
+// ── Render ────────────────────────────────────────────────────
+function render(data) {
+  const {periods, subjects, overall, studentCounts} = data;
+  const sn=Object.keys(subjects);
+  const li=0, oi=Math.min(12,periods.length-1), ti=Math.min(24,periods.length-1);
+
+  document.getElementById('mainContent').style.display='block';
+  document.getElementById('footerNote').style.display='block';
+  document.getElementById('lastUpdated').style.display='inline-block';
+  document.getElementById('lastUpdated').textContent='Latest: '+periods[li];
+  ['loadingScreen','setupScreen','errorScreen'].forEach(s=>document.getElementById(s).style.display='none');
+
+  // Metric cards
+  const lo=overall[li], po=overall[oi], ch=lo-po;
+  const best=sn.reduce((a,b)=>subjects[a][li]>subjects[b][li]?a:b);
+  const worst=sn.reduce((a,b)=>subjects[a][li]<subjects[b][li]?a:b);
+  const stu=studentCounts[li]||'&mdash;';
+
+  document.getElementById('metricsRow').innerHTML=`
+    <div class="metric-card"><div class="metric-label">Overall score</div><div class="metric-value ${lo>=0?'val-pos':'val-neg'}">${lo.toFixed(2)}</div><div class="metric-sub">${periods[li]}</div></div>
+    <div class="metric-card"><div class="metric-label">Change vs. 1 year ago</div><div class="metric-value ${ch>=0?'val-pos':'val-neg'}">${ch>=0?'+':''}${ch.toFixed(2)}</div><div class="metric-sub">was ${po.toFixed(2)} &middot; ${periods[oi]}</div></div>
+    <div class="metric-card"><div class="metric-label">Strongest subject</div><div class="metric-value val-text val-pos">${best.replace(/[*']/g,'')}</div><div class="badge badge-pos">${subjects[best][li].toFixed(2)}</div></div>
+    <div class="metric-card"><div class="metric-label">Needs most focus</div><div class="metric-value val-text val-neg">${worst.replace(/[*']/g,'')}</div><div class="badge badge-neg">${subjects[worst][li].toFixed(2)}</div></div>
+    <div class="metric-card"><div class="metric-label">Students (latest)</div><div class="metric-value" style="color:var(--navy)">${stu}</div><div class="metric-sub">current / recent grads</div></div>`;
+
+  // Overall trend
+  const vo=periods.map((p,i)=>{const v=overall[i];return(v!==null&&Math.abs(v)<10)?{p,v}:null;}).filter(Boolean).reverse();
+  if(OC)OC.destroy();
+  OC=new Chart(document.getElementById('overallChart'),{
+    type:'line',
+    data:{labels:vo.map(d=>d.p),datasets:[{data:vo.map(d=>d.v),borderColor:BLUE,backgroundColor:'rgba(21,120,193,0.08)',fill:true,tension:0.35,pointRadius:2,borderWidth:2,label:'d-value'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:TT},
+      scales:{x:{ticks:{color:'#6b7a8d',font:{size:9},maxRotation:45,autoSkip:true,maxTicksLimit:18},grid:{display:false}},
+              y:{ticks:{color:'#6b7a8d',font:{size:10}},grid:{color:'rgba(0,51,102,0.07)'}}}}
+  });
+
+  // Subject selector
+  const sel=document.getElementById('subjectSelect');
+  sn.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;sel.appendChild(o);});
+
+  function buildSubjectChart(mode){
+    if(SC)SC.destroy();
+    const ctx=document.getElementById('subjectChart');
+    const wrap=document.getElementById('subjectChartWrap');
+    if(mode==='all'){
+      wrap.style.height='360px';
+      const sorted=[...sn].map(s=>({name:s.replace(/[*']/g,'').trim(),value:subjects[s][li]})).sort((a,b)=>b.value-a.value);
+      SC=new Chart(ctx,{
+        type:'bar',
+        data:{labels:sorted.map(d=>d.name),datasets:[{data:sorted.map(d=>d.value),backgroundColor:sorted.map(d=>d.value>=0?'rgba(21,120,193,0.85)':'rgba(192,65,30,0.8)'),borderRadius:4,label:'d-value'}]},
+        options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:TT},
+          scales:{x:{min:-2,max:1.5,ticks:{color:'#6b7a8d',font:{size:10}},grid:{color:'rgba(0,51,102,0.07)'}},
+                  y:{ticks:{color:'#444444',font:{size:11},autoSkip:false}}}}
+      });
+    } else {
+      wrap.style.height='240px';
+      const pts=periods.map((p,i)=>{const v=subjects[mode][i];return(v!==null&&Math.abs(v)<10)?{p,v}:null;}).filter(Boolean).reverse();
+      SC=new Chart(ctx,{
+        type:'line',
+        data:{labels:pts.map(d=>d.p),datasets:[{data:pts.map(d=>d.v),borderColor:PURPLE,backgroundColor:'rgba(0,51,102,0.07)',fill:true,tension:0.35,pointRadius:3,borderWidth:2,label:mode.replace(/[*']/g,'').trim()}]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:TT},
+          scales:{x:{ticks:{color:'#6b7a8d',font:{size:9},maxRotation:45,autoSkip:true,maxTicksLimit:14},grid:{display:false}},
+                  y:{ticks:{color:'#6b7a8d',font:{size:10}},grid:{color:'rgba(0,51,102,0.07)'}}}}
+      });
+    }
+  }
+  buildSubjectChart('all');
+  sel.addEventListener('change',e=>buildSubjectChart(e.target.value));
+
+  // YoY
+  const yp=[{label:periods[li],idx:li,color:BLUE},{label:periods[oi],idx:oi,color:PURPLE},{label:periods[ti],idx:ti,color:GOLD}].filter(p=>p.label);
+  document.getElementById('yoyLegend').innerHTML=yp.map(p=>`<span class="legend-item"><span class="legend-dot" style="background:${p.color}"></span>${p.label}</span>`).join('');
+  if(YC)YC.destroy();
+  YC=new Chart(document.getElementById('yoyChart'),{
+    type:'bar',
+    data:{labels:sn.map(s=>s.replace(/[*']/g,'').trim().substring(0,16)),
+          datasets:yp.map(p=>({label:p.label,data:sn.map(s=>subjects[s][p.idx]),backgroundColor:p.color,borderRadius:2}))},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:TT},
+      scales:{x:{ticks:{color:'#6b7a8d',font:{size:9},maxRotation:45,autoSkip:false},grid:{display:false}},
+              y:{ticks:{color:'#6b7a8d',font:{size:10}},grid:{color:'rgba(0,51,102,0.07)'}}}}
+  });
+
+  // Table
+  const tbl=[...sn].map(s=>({name:s.replace(/[*']/g,'').trim(),latest:subjects[s][li],oneYear:subjects[s][oi],change:subjects[s][li]-subjects[s][oi]})).sort((a,b)=>b.latest-a.latest);
+  document.getElementById('summaryTable').innerHTML=`
+    <thead><tr><th>Subject</th><th>${periods[li]}</th><th>${periods[oi]}</th><th>Change</th><th>Trend</th></tr></thead>
+    <tbody>${tbl.map(r=>`<tr>
+      <td style="font-weight:500">${r.name}</td>
+      <td><span class="pill ${r.latest>=0?'pill-pos':'pill-neg'}">${r.latest.toFixed(2)}</span></td>
+      <td style="color:var(--muted)">${r.oneYear.toFixed(2)}</td>
+      <td style="color:${r.change>=0?'#1578C1':'#c0411e'};font-weight:600">${r.change>=0?'&#9650;':'&#9660;'} ${Math.abs(r.change).toFixed(2)}</td>
+      <td>${r.change>=0?'&#128200;':'&#128201;'}</td>
+    </tr>`).join('')}</tbody>`;
+}
+
+document.addEventListener('DOMContentLoaded', loadData);
+</script>
+</body>
+</html>
