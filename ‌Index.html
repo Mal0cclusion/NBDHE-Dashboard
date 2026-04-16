@@ -224,24 +224,39 @@ async function loadData() {
   }
 
   // Google Drive direct download URL
-  const directUrl = `https://docs.google.com/spreadsheets/d/${DRIVE_FILE_ID}/export?format=xlsx`;
-  // CORS proxy allows browser to fetch the file from an external site
-  const url = `https://corsproxy.io/?${encodeURIComponent(directUrl)}`;
+  // Try multiple proxies in case one fails
+  const directUrl = `https://docs.google.com/spreadsheets/d/${DRIVE_FILE_ID}/export?format=xlsx&id=${DRIVE_FILE_ID}`;
+  const proxies = [
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(directUrl)}`,
+    `https://corsproxy.io/?${encodeURIComponent(directUrl)}`,
+    `https://thingproxy.freeboard.io/fetch/${directUrl}`
+  ];
   document.getElementById('testUrl').textContent = url;
   show('loadingScreen');
 
-  try {
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status} — check that the file is shared publicly.`);
-    const buf  = await resp.arrayBuffer();
-    const wb   = XLSX.read(new Uint8Array(buf), {type:'array'});
-    const data = parseWorkbook(wb);
-    render(data);
-  } catch(err) {
-    console.error(err);
-    document.getElementById('errorMsg').textContent = err.message;
-    show('errorScreen');
+  let lastError = null;
+  for (const proxyUrl of proxies) {
+    try {
+      console.log('Trying:', proxyUrl);
+      const resp = await fetch(proxyUrl);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const buf = await resp.arrayBuffer();
+      // Check we got an xlsx file not an html page
+      const arr = new Uint8Array(buf);
+      const isPK = arr[0]===80 && arr[1]===75; // xlsx files start with PK
+      if (!isPK) throw new Error('Got an HTML page instead of Excel file — proxy redirected');
+      const wb = XLSX.read(arr, {type:'array'});
+      const data = parseWorkbook(wb);
+      render(data);
+      return; // success - stop trying
+    } catch(err) {
+      console.warn('Proxy failed:', err.message);
+      lastError = err;
+    }
   }
+  // All proxies failed
+  document.getElementById('errorMsg').textContent = lastError ? lastError.message : 'All fetch attempts failed.';
+  show('errorScreen');
 }
 
 function show(id) {
