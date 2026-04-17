@@ -7,21 +7,12 @@
 
 <!--
   ============================================================
-  SETUP: Replace YOUR_GOOGLE_DRIVE_FILE_ID_HERE below with
-  the file ID from your Google Drive sharing link.
-
-  How to get it:
-  1. Right-click your Excel file in Google Drive -> Share
-  2. Set to "Anyone with the link" -> Viewer -> Copy link
-  3. The link looks like:
-     https://drive.google.com/file/d/ABCDEFG1234/view?usp=sharing
-  4. Copy just the ID between /d/ and /view  (e.g. ABCDEFG1234)
-  5. Paste it below, replacing YOUR_GOOGLE_DRIVE_FILE_ID_HERE
+  TO UPDATE DATA: Upload a new NBDHE Subject Breakdown.xlsx
+  to the GitHub repository at:
+  https://github.com/Mal0cclusion/NBDHE-Dashboard
+  The dashboard will automatically reflect the new data.
   ============================================================
 -->
-<script>
-  const DRIVE_FILE_ID = "1a0Ghf_faahRCvAz6YW-gyIEF2AZ50PH_";
-</script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Gantari:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800&display=swap" rel="stylesheet">
@@ -134,8 +125,6 @@
       <li>Right-click the file &rarr; <strong>Share</strong> &rarr; set to <strong>"Anyone with the link"</strong> &rarr; Viewer &rarr; Copy link</li>
       <li>Your link looks like: <code>docs.google.com/spreadsheets/d/<strong>FILEID</strong>/edit</code></li>
       <li>Copy just the bold part between <code>/d/</code> and <code>/edit</code></li>
-      <li>Open this HTML in a text editor, find the line:<br><code>const DRIVE_FILE_ID = "YOUR_GOOGLE_DRIVE_FILE_ID_HERE";</code></li>
-      <li>Replace <code>YOUR_GOOGLE_DRIVE_FILE_ID_HERE</code> with your file ID</li>
       <li>Save and re-upload this HTML to Google Sites</li>
     </ol>
   </div>
@@ -219,44 +208,26 @@ const TT={
 
 // ── Load from Google Drive ────────────────────────────────────
 async function loadData() {
-  if (!DRIVE_FILE_ID || DRIVE_FILE_ID === 'YOUR_GOOGLE_DRIVE_FILE_ID_HERE') {
     show('setupScreen'); return;
   }
 
   // Google Drive direct download URL
-  // Try multiple proxies in case one fails
-  const directUrl = `https://docs.google.com/spreadsheets/d/${DRIVE_FILE_ID}/export?format=xlsx&id=${DRIVE_FILE_ID}`;
-  const proxies = [
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(directUrl)}`,
-    `https://corsproxy.io/?${encodeURIComponent(directUrl)}`,
-    `https://thingproxy.freeboard.io/fetch/${directUrl}`
-  ];
+  const url = 'https://github.com/Mal0cclusion/NBDHE-Dashboard/raw/refs/heads/main/NBDHE%20Subject%20Breakdown.xlsx';
   document.getElementById('testUrl').textContent = url;
   show('loadingScreen');
 
-  let lastError = null;
-  for (const proxyUrl of proxies) {
-    try {
-      console.log('Trying:', proxyUrl);
-      const resp = await fetch(proxyUrl);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const buf = await resp.arrayBuffer();
-      // Check we got an xlsx file not an html page
-      const arr = new Uint8Array(buf);
-      const isPK = arr[0]===80 && arr[1]===75; // xlsx files start with PK
-      if (!isPK) throw new Error('Got an HTML page instead of Excel file — proxy redirected');
-      const wb = XLSX.read(arr, {type:'array'});
-      const data = parseWorkbook(wb);
-      render(data);
-      return; // success - stop trying
-    } catch(err) {
-      console.warn('Proxy failed:', err.message);
-      lastError = err;
-    }
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status} — could not load the Excel file.`);
+    const buf  = await resp.arrayBuffer();
+    const wb   = XLSX.read(new Uint8Array(buf), {type:'array'});
+    const data = parseWorkbook(wb);
+    render(data);
+  } catch(err) {
+    console.error(err);
+    document.getElementById('errorMsg').textContent = err.message;
+    show('errorScreen');
   }
-  // All proxies failed
-  document.getElementById('errorMsg').textContent = lastError ? lastError.message : 'All fetch attempts failed.';
-  show('errorScreen');
 }
 
 function show(id) {
