@@ -206,14 +206,9 @@ const TT={
   padding:10, cornerRadius:6, borderWidth:0
 };
 
-// ── Load from Google Drive ────────────────────────────────────
+// ── Load from GitHub ──────────────────────────────────────────
 async function loadData() {
-    show('setupScreen'); return;
-  }
-
-  // Google Drive direct download URL
   const url = 'https://github.com/Mal0cclusion/NBDHE-Dashboard/raw/refs/heads/main/NBDHE%20Subject%20Breakdown.xlsx';
-  document.getElementById('testUrl').textContent = url;
   show('loadingScreen');
 
   try {
