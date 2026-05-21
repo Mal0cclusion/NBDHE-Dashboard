@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NBDHE Performance Dashboard</title>
+<!--
+  TO UPDATE DATA: Upload a new NBDHE Subject Breakdown.xlsx
+  to https://github.com/Mal0cclusion/NBDHE-Dashboard
+  The dashboard will automatically reflect the new data.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Gantari:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root {
+    --navy:#003366;--white:#ffffff;--blue:#1578C1;--gold:#F4BB33;
+    --fall:#F4BB33;--spring:#1578C1;
+    --bg:#f0f4f8;--surface:#ffffff;--surface2:#e4ecf4;
+    --body-text:#444444;--muted:#6b7a8d;--border:#CCCCCC;
+    --green-light:#ddeef9;--red:#c0411e;--red-light:#fceee9;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Gantari',sans-serif;background:var(--bg);color:var(--body-text);min-height:100vh;}
+
+  /* HEADER */
+  .header{background:var(--navy);color:var(--white);padding:2rem 2.5rem 1.5rem;position:relative;overflow:hidden;border-bottom:4px solid var(--gold);}
+  .header::before{content:'';position:absolute;top:-50px;right:-50px;width:220px;height:220px;border-radius:50%;background:rgba(21,120,193,0.15);}
+  .header::after{content:'';position:absolute;bottom:-30px;right:120px;width:120px;height:120px;border-radius:50%;background:rgba(244,187,51,0.08);}
+  .header-top{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:1rem;position:relative;z-index:1;}
+  .header h1{font-size:28px;font-weight:700;letter-spacing:-0.5px;color:var(--white);}
+  .header p{font-size:13px;color:rgba(255,255,255,0.6);margin-top:6px;font-weight:300;}
+  .last-updated{font-size:11px;font-weight:500;color:var(--navy);background:var(--gold);border-radius:20px;padding:4px 14px;white-space:nowrap;align-self:center;}
+
+  /* STATUS */
+  .status-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:65vh;gap:16px;padding:2rem;text-align:center;}
+  .spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin 0.8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .status-title{font-size:17px;font-weight:600;color:var(--navy);}
+  .status-sub{font-size:13px;color:var(--muted);max-width:420px;line-height:1.7;}
+  .setup-box{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--gold);border-radius:10px;padding:1.5rem;max-width:520px;text-align:left;}
+  .setup-box h3{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--navy);margin-bottom:10px;}
+  .setup-box ol{padding-left:1.2rem;font-size:13px;color:var(--muted);line-height:2.2;}
+  .retry-btn{font-family:'Gantari',sans-serif;font-size:13px;font-weight:600;background:var(--navy);color:#fff;border:none;border-radius:8px;padding:9px 24px;cursor:pointer;transition:background 0.15s;}
+  .retry-btn:hover{background:var(--blue);}
+
+  /* MAIN */
+  .main{padding:2rem 2.5rem;display:none;}
+  .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:2rem;}
+  .metric-card{background:var(--surface);border-radius:10px;padding:1.1rem 1.25rem;border:1px solid var(--border);border-top:3px solid var(--navy);transition:box-shadow 0.15s,transform 0.15s;}
+  .metric-card:hover{box-shadow:0 6px 20px rgba(0,51,102,0.1);transform:translateY(-1px);}
+  .metric-label{font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:6px;font-weight:600;}
+  .metric-value{font-size:26px;font-weight:300;color:var(--navy);}
+  .metric-sub{font-size:11px;color:var(--muted);margin-top:4px;}
+  .val-pos{color:var(--blue);}
+  .val-neg{color:var(--red);}
+  .val-text{font-size:15px;font-weight:600;padding-top:5px;}
+  .badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:20px;font-weight:600;margin-top:4px;}
+  .badge-pos{background:var(--green-light);color:var(--blue);}
+  .badge-neg{background:var(--red-light);color:var(--red);}
+
+  /* SECTIONS */
+  .section{margin-bottom:2.5rem;}
+  .section-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:8px;}
+  .section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--navy);padding-left:10px;border-left:3px solid var(--gold);}
+  .section-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .chart-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.25rem;box-shadow:0 1px 4px rgba(0,51,102,0.06);}
+
+  /* TOGGLE BUTTONS */
+  .toggle-group{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+  .toggle-btn{font-family:'Gantari',sans-serif;font-size:11px;font-weight:600;padding:5px 12px;border:none;background:var(--surface);color:var(--muted);cursor:pointer;transition:background 0.15s,color 0.15s;white-space:nowrap;}
+  .toggle-btn:not(:last-child){border-right:1px solid var(--border);}
+  .toggle-btn.active{background:var(--navy);color:var(--white);}
+  .toggle-btn:hover:not(.active){background:var(--surface2);color:var(--navy);}
+
+  /* COHORT LEGEND */
+  .cohort-legend{display:flex;gap:16px;font-size:11px;font-weight:600;margin-bottom:10px;flex-wrap:wrap;}
+  .cohort-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:4px;}
+  .fall-dot{background:var(--fall);}
+  .spring-dot{background:var(--spring);}
+
+  select{font-family:'Gantari',sans-serif;font-size:13px;font-weight:500;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--navy);cursor:pointer;outline:none;transition:border-color 0.15s;}
+  select:focus{border-color:var(--blue);}
+  select:hover{border-color:var(--navy);}
+  .legend{display:flex;flex-wrap:wrap;gap:16px;font-size:12px;color:var(--muted);margin-bottom:12px;font-weight:500;}
+  .legend-item{display:flex;align-items:center;gap:6px;}
+  .legend-dot{width:10px;height:10px;border-radius:2px;flex-shrink:0;}
+  .data-table{width:100%;border-collapse:collapse;font-size:13px;}
+  .data-table th{font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--white);font-weight:600;padding:10px 12px;text-align:left;background:var(--navy);}
+  .data-table th:first-child{border-radius:6px 0 0 0;}
+  .data-table th:last-child{border-radius:0 6px 0 0;}
+  .data-table td{padding:9px 12px;border-bottom:1px solid rgba(0,51,102,0.06);color:var(--body-text);}
+  .data-table tr:last-child td{border-bottom:none;}
+  .data-table tr:hover td{background:var(--surface2);}
+  .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:12px;font-weight:600;}
+  .pill-pos{background:var(--green-light);color:var(--blue);}
+  .pill-neg{background:var(--red-light);color:var(--red);}
+  .footer{padding:1.25rem 2.5rem;font-size:11px;background:var(--navy);color:rgba(255,255,255,0.45);line-height:1.8;display:none;}
+
+  @media(max-width:640px){
+    .header,.main,.footer{padding-left:1rem;padding-right:1rem;}
+    .header h1{font-size:22px;}
+    .metric-value{font-size:22px;}
+    .section-header{flex-direction:column;align-items:flex-start;}
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-top">
+    <div>
+      <h1>NBDHE Performance Dashboard</h1>
+      <p>D-value scores vs. national average &middot; Rolling 12-month reporting periods</p>
+    </div>
+    <div class="last-updated" id="lastUpdated" style="display:none;"></div>
+  </div>
+</div>
+
+<!-- LOADING -->
+<div class="status-screen" id="loadingScreen">
+  <div class="spinner"></div>
+  <div class="status-title">Loading latest data&hellip;</div>
+  <div class="status-sub">Fetching your Excel file from GitHub.</div>
+</div>
+
+<!-- ERROR -->
+<div class="status-screen" id="errorScreen" style="display:none;">
+  <div class="status-title">Could not load data</div>
+  <div class="status-sub" id="errorMsg">There was a problem fetching the Excel file.</div>
+  <button class="retry-btn" onclick="loadData()">Try again</button>
+  <div class="setup-box">
+    <h3>Troubleshooting</h3>
+    <ol>
+      <li>Check your internet connection</li>
+      <li>Make sure the Excel file is uploaded to the GitHub repository</li>
+      <li>Check the browser console (F12) for more details</li>
+    </ol>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div class="main" id="mainContent">
+  <div class="metrics" id="metricsRow"></div>
+
+  <!-- OVERALL TREND -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-title">Overall NBDHE Score &mdash; Full History</span>
+      <div class="section-controls">
+        <div class="toggle-group" id="overallToggle">
+          <button class="toggle-btn active" onclick="setOverallView('combined',this)">Combined</button>
+          <button class="toggle-btn" onclick="setOverallView('cohort',this)">By Cohort</button>
+        </div>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="cohort-legend" id="overallCohortLegend" style="display:none;">
+        <span><span class="cohort-dot fall-dot"></span>Fall cohort (Aug&ndash;Dec)</span>
+        <span><span class="cohort-dot spring-dot"></span>Spring cohort (Jan&ndash;May)</span>
+      </div>
+      <div style="position:relative;height:220px;">
+        <canvas id="overallChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUBJECT PERFORMANCE -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-title">Subject Performance</span>
+      <div class="section-controls">
+        <div class="toggle-group" id="subjectPeriodToggle">
+          <button class="toggle-btn active" onclick="setSubjectPeriod(0,this)">Latest</button>
+          <button class="toggle-btn" onclick="setSubjectPeriod(1,this)">Prev Period</button>
+          <button class="toggle-btn" onclick="setSubjectPeriod(12,this)">1 Year Ago</button>
+        </div>
+        <select id="subjectSelect"><option value="all">All subjects &mdash; bar chart</option></select>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div id="subjectPeriodLabel" style="font-size:11px;color:var(--muted);margin-bottom:10px;font-weight:500;"></div>
+      <div style="position:relative;" id="subjectChartWrap">
+        <canvas id="subjectChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- YEAR OVER YEAR -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-title">Year-over-Year Comparison</span>
+    </div>
+    <div class="chart-card">
+      <div class="legend" id="yoyLegend"></div>
+      <div style="position:relative;height:300px;">
+        <canvas id="yoyChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUMMARY TABLE -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-title">Period Summary</span>
+      <div class="section-controls">
+        <div class="toggle-group" id="tablePeriodToggle">
+          <button class="toggle-btn active" onclick="setTablePeriod(0,this)">Latest</button>
+          <button class="toggle-btn" onclick="setTablePeriod(1,this)">Prev Period</button>
+          <button class="toggle-btn" onclick="setTablePeriod(12,this)">1 Year Ago</button>
+        </div>
+      </div>
+    </div>
+    <div class="chart-card" style="overflow-x:auto;">
+      <table class="data-table" id="summaryTable"></table>
+    </div>
+  </div>
+</div>
+
+<div class="footer" id="footerNote">
+  * Subjects marked with an asterisk contain relatively few questions &mdash; interpret with caution. &nbsp;|&nbsp;
+  D-values = standard deviations from national mean (0 = national average). &nbsp;|&nbsp;
+  Fall cohort = Aug&ndash;Dec exam periods &nbsp;|&nbsp; Spring cohort = Jan&ndash;May exam periods.
+</div>
+
+<script>
+const BLUE='#1578C1', PURPLE='#003366', GOLD='#F4BB33', RED='#c0411e';
+const FALL_COLOR='#F4BB33', SPRING_COLOR='#1578C1';
+const FALL_MONTHS=[8,9,10,11,12];   // Aug-Dec
+const SPRING_MONTHS=[1,2,3,4,5];    // Jan-May
+
+let SC=null, OC=null, YC=null;
+let _data=null;
+let _subjectPeriodOffset=0;
+let _tablePeriodOffset=0;
+let _subjectMode='all';
+let _overallView='combined';
+
+const TT={
+  callbacks:{title:i=>i[0].label,label:i=>` ${i.dataset.label||'d-value'}: ${Number(i.raw).toFixed(2)}`},
+  backgroundColor:'#003366',titleColor:'rgba(255,255,255,0.6)',bodyColor:'#ffffff',
+  padding:10,cornerRadius:6,borderWidth:0
+};
+
+// ── Cohort helper ─────────────────────────────────────────────
+// Periods are like "3/24-2/25" — end month is after the dash
+function getPeriodEndMonth(period) {
+  const m = period.match(/(\d+)\/\d+-\d+\/\d+/);
+  if (!m) return null;
+  // end date is second part e.g. "2/25" -> month 2
+  const parts = period.split('-');
+  if (parts.length < 2) return null;
+  return parseInt(parts[1].split('/')[0]);
+}
+
+function getCohort(period) {
+  const m = getPeriodEndMonth(period);
+  if (FALL_MONTHS.includes(m)) return 'fall';
+  if (SPRING_MONTHS.includes(m)) return 'spring';
+  return 'other';
+}
+
+// ── Load ──────────────────────────────────────────────────────
+async function loadData() {
+  show('loadingScreen');
+  const url = 'https://raw.githubusercontent.com/Mal0cclusion/NBDHE-Dashboard/main/NBDHE%20Subject%20Breakdown.xlsx';
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const buf = await resp.arrayBuffer();
+    const wb  = XLSX.read(new Uint8Array(buf), {type:'array'});
+    _data = parseWorkbook(wb);
+    render(_data);
+  } catch(err) {
+    console.error(err);
+    document.getElementById('errorMsg').textContent = err.message;
+    show('errorScreen');
+  }
+}
+
+function show(id) {
+  ['loadingScreen','errorScreen','mainContent'].forEach(s => {
+    document.getElementById(s).style.display = (s===id) ? (s==='mainContent'?'block':'flex') : 'none';
+  });
+}
+
+// ── Parse ─────────────────────────────────────────────────────
+function parseWorkbook(wb) {
+  const sheet = wb.Sheets['NBDHE Summary Reports'];
+  if (!sheet) throw new Error('Sheet "NBDHE Summary Reports" not found.');
+  const rows    = XLSX.utils.sheet_to_json(sheet, {header:1, defval:null});
+  const periods = rows[0].slice(1).filter(Boolean);
+  const subjects={}, overall=[], studentCounts=[];
+  for (let r=1; r<rows.length; r++) {
+    const row=rows[r];
+    if (!row||!row[0]) continue;
+    const name=String(row[0]).trim();
+    const vals=periods.map((_,i)=>{const v=row[i+1];return(v===null||v===undefined||v==='')?null:Number(v);});
+    if (name.toLowerCase().includes('overall'))               { vals.forEach((v,i)=>overall[i]=v); }
+    else if (name.toLowerCase().includes('current students')) { vals.forEach((v,i)=>studentCounts[i]=v); }
+    else if (!name.toLowerCase().includes('students reported') && !name.startsWith('*')) { subjects[name]=vals; }
+  }
+  if (!Object.keys(subjects).length) throw new Error('Could not find subject data.');
+  return {periods, subjects, overall, studentCounts};
+}
+
+// ── Render ────────────────────────────────────────────────────
+function render(data) {
+  const {periods, subjects, overall, studentCounts} = data;
+  const sn=Object.keys(subjects);
+  const li=0, oi=Math.min(12,periods.length-1);
+
+  document.getElementById('mainContent').style.display='block';
+  document.getElementById('footerNote').style.display='block';
+  document.getElementById('lastUpdated').style.display='inline-block';
+  document.getElementById('lastUpdated').textContent='Latest: '+periods[li];
+  ['loadingScreen','errorScreen'].forEach(s=>document.getElementById(s).style.display='none');
+
+  // Metrics
+  const lo=overall[li], po=overall[oi], ch=lo-po;
+  const best=sn.reduce((a,b)=>subjects[a][li]>subjects[b][li]?a:b);
+  const worst=sn.reduce((a,b)=>subjects[a][li]<subjects[b][li]?a:b);
+  const stu=studentCounts[li]||'&mdash;';
+
+  document.getElementById('metricsRow').innerHTML=`
+    <div class="metric-card"><div class="metric-label">Overall score</div><div class="metric-value ${lo>=0?'val-pos':'val-neg'}">${lo.toFixed(2)}</div><div class="metric-sub">${periods[li]}</div></div>
+    <div class="metric-card"><div class="metric-label">Change vs. 1 year ago</div><div class="metric-value ${ch>=0?'val-pos':'val-neg'}">${ch>=0?'+':''}${ch.toFixed(2)}</div><div class="metric-sub">was ${po.toFixed(2)} &middot; ${periods[oi]}</div></div>
+    <div class="metric-card"><div class="metric-label">Strongest subject</div><div class="metric-value val-text val-pos">${best.replace(/[*']/g,'')}</div><div class="badge badge-pos">${subjects[best][li].toFixed(2)}</div></div>
+    <div class="metric-card"><div class="metric-label">Needs most focus</div><div class="metric-value val-text val-neg">${worst.replace(/[*']/g,'')}</div><div class="badge badge-neg">${subjects[worst][li].toFixed(2)}</div></div>
+    <div class="metric-card"><div class="metric-label">Students (latest)</div><div class="metric-value" style="color:var(--navy)">${stu}</div><div class="metric-sub">current / recent grads</div></div>`;
+
+  buildOverallChart();
+
+  // Subject selector
+  const sel=document.getElementById('subjectSelect');
+  sn.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;sel.appendChild(o);});
+  buildSubjectChart();
+  sel.addEventListener('change',e=>{_subjectMode=e.target.value;buildSubjectChart();});
+
+  // YoY
+  buildYoY();
+
+  // Table
+  buildTable();
+}
+
+// ── Overall chart ─────────────────────────────────────────────
+function buildOverallChart() {
+  const {periods, overall, studentCounts} = _data;
+  if (OC) OC.destroy();
+  const ctx = document.getElementById('overallChart');
+
+  const pts = periods.map((p,i)=>{
+    const v=overall[i];
+    const students=studentCounts[i];
+    const hasStudents = students !== null && students !== undefined && Number(students) > 0;
+    return (v!==null && Math.abs(v)<10 && hasStudents) ? {p, v, cohort:getCohort(p)} : null;
+  }).filter(Boolean).reverse();
+
+  if (_overallView==='combined') {
+    document.getElementById('overallCohortLegend').style.display='none';
+    OC = new Chart(ctx, {
+      type:'line',
+      data:{
+        labels:pts.map(d=>d.p),
+        datasets:[{
+          data:pts.map(d=>d.v),
+          borderColor:BLUE, backgroundColor:'rgba(21,120,193,0.08)',
+          fill:true, tension:0.35, borderWidth:2, label:'d-value',
+          pointRadius:4,
+          pointBackgroundColor:pts.map(d=>d.cohort==='fall'?FALL_COLOR:d.cohort==='spring'?SPRING_COLOR:'#ccc'),
+          pointBorderColor:pts.map(d=>d.cohort==='fall'?FALL_COLOR:d.cohort==='spring'?SPRING_COLOR:'#ccc'),
+          pointRadius:5,
+        }]
+      },
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{...TT,callbacks:{
+          title:i=>i[0].label,
+          label:i=>{
+            const pt=pts[i[0].dataIndex];
+            const cohortLabel=pt.cohort==='fall'?' | Fall cohort':pt.cohort==='spring'?' | Spring cohort':'';
+            return ` d-value: ${Number(i[0].raw).toFixed(2)}${cohortLabel}`;
+          }
+        }}},
+        scales:{
+          x:{ticks:{color:'#6b7a8d',font:{size:9},maxRotation:45,autoSkip:true,maxTicksLimit:18},grid:{display:false}},
+          y:{ticks:{color:'#6b7a8d',font:{size:10}},grid:{color:'rgba(0,51,102,0.07)'}}
+        }
+      }
+    });
+  } else {
+    // Cohort view — two separate lines
+    document.getElementById('overallCohortLegend').style.display='flex';
+    const fallPts  = pts.filter(d=>d.cohort==='fall');
+    const springPts= pts.filter(d=>d.cohort==='spring');
+    OC = new Chart(ctx, {
+      type:'line',
+      data:{
+        labels:pts.map(d=>d.p),
+        datasets:[
+          {label:'Fall (Aug-Dec)', data:pts.map(d=>d.cohort==='fall'?d.v:null),
+           borderColor:FALL_COLOR, backgroundColor:'rgba(244,187,51,0.08)',
+           fill:false, tension:0.35, borderWidth:2, pointRadius:5,
+           pointBackgroundColor:FALL_COLOR, spanGaps:false},
+          {label:'Spring (Jan-May)', data:pts.map(d=>d.cohort==='spring'?d.v:null),
+           borderColor:SPRING_COLOR, backgroundColor:'rgba(21,120,193,0.08)',
+           fill:false, tension:0.35, borderWidth:2, pointRadius:5,
+           pointBackgroundColor:SPRING_COLOR, spanGaps:false},
+        ]
+      },
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:TT},
+        scales:{
+          x:{ticks:{color:'#6b7a8d',font:{size:9},maxRotation:45,autoSkip:true,maxTicksLimit:18},grid:{display:false}},
+          y:{ticks:{color:'#6b7a8d',font:{size:10}},grid:{color:'rgba(0,51,102,0.07)'}}
+        }
+      }
+    });
+  }
+}
+
+function setOverallView(view, btn) {
+  _overallView = view;
+  btn.closest('.toggle-group').querySelectorAll('.toggle-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  buildOverallChart();
+}
+
+// ── Subject chart ─────────────────────────────────────────────
+function buildSubjectChart() {
+  const {periods, subjects} = _data;
+  const sn = Object.keys(subjects);
+  const idx = Math.min(_subjectPeriodOffset, periods.length-1);
+  if (SC) SC.destroy();
+  const ctx  = document.getElementById('subjectChart');
+  const wrap = document.getElementById('subjectChartWrap');
+  document.getElementById('subjectPeriodLabel').textContent = 'Period: ' + periods[idx];
+
+  if (_subjectMode==='all') {
+    wrap.style.height='360px';
+    const sorted=[...sn].map(s=>({name:s.replace(/[*']/g,'').trim(),value:subjects[s][idx]})).sort((a,b)=>b.value-a.value);
+    SC = new Chart(ctx, {
+      type:'bar',
+      data:{labels:sorted.map(d=>d.name),datasets:[{
+        data:sorted.map(d=>d.value),
+        backgroundColor:sorted.map(d=>d.value>=0?'rgba(21,120,193,0.85)':'rgba(192,65,30,0.8)'),
+        borderRadius:4, label:'d-value'
+      }]},
+      options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:TT},
+        scales:{
+          x:{min:-2,max:1.5,ticks:{color:'#6b7a8d',font:{size:10}},grid:{color:'rgba(0,51,102,0.07)'}},
+          y:{ticks:{color:'#444444',font:{size:11},autoSkip:false}}
+        }
+      }
+    });
+  } else {
+    wrap.style.height='240px';
+    const pts=periods.map((p,i)=>{const v=subjects[_subjectMode][i];return(v!==null&&Math.abs(v)<10)?{p,v}:null;}).filter(Boolean).reverse();
+    SC = new Chart(ctx, {
+      type:'line',
+      data:{labels:pts.map(d=>d.p),datasets:[{
+        data:pts.map(d=>d.v),
+        borderColor:PURPLE, backgroundColor:'rgba(0,51,102,0.07)',
+        fill:true, tension:0.35, pointRadius:3, borderWidth:2,
+        label:_subjectMode.replace(/[*']/g,'').trim()
+      }]},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:TT},
+        scales:{
+          x:{ticks:{color:'#6b7a8d',font:{size:9},maxRotation:45,autoSkip:true,maxTicksLimit:14},grid:{display:false}},
+          y:{ticks:{color:'#6b7a8d',font:{size:10}},grid:{color:'rgba(0,51,102,0.07)'}}
+        }
+      }
+    });
+  }
+}
+
+function setSubjectPeriod(offset, btn) {
+  _subjectPeriodOffset = offset;
+  btn.closest('.toggle-group').querySelectorAll('.toggle-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  buildSubjectChart();
+}
+
+// ── YoY chart ─────────────────────────────────────────────────
+function buildYoY() {
+  const {periods, subjects} = _data;
+  const sn = Object.keys(subjects);
+  const li=0, oi=Math.min(12,periods.length-1), ti=Math.min(24,periods.length-1);
+  const yp=[{label:periods[li],idx:li,color:BLUE},{label:periods[oi],idx:oi,color:PURPLE},{label:periods[ti],idx:ti,color:GOLD}].filter(p=>p.label);
+  document.getElementById('yoyLegend').innerHTML=yp.map(p=>`<span class="legend-item"><span class="legend-dot" style="background:${p.color}"></span>${p.label}</span>`).join('');
+  if (YC) YC.destroy();
+  YC = new Chart(document.getElementById('yoyChart'), {
+    type:'bar',
+    data:{
+      labels:sn.map(s=>s.replace(/[*']/g,'').trim().substring(0,16)),
+      datasets:yp.map(p=>({label:p.label,data:sn.map(s=>subjects[s][p.idx]),backgroundColor:p.color,borderRadius:2}))
+    },
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:TT},
+      scales:{
+        x:{ticks:{color:'#6b7a8d',font:{size:9},maxRotation:45,autoSkip:false},grid:{display:false}},
+        y:{ticks:{color:'#6b7a8d',font:{size:10}},grid:{color:'rgba(0,51,102,0.07)'}}
+      }
+    }
+  });
+}
+
+// ── Table ─────────────────────────────────────────────────────
+function buildTable() {
+  const {periods, subjects} = _data;
+  const sn = Object.keys(subjects);
+  const idx     = Math.min(_tablePeriodOffset, periods.length-1);
+  const prevIdx = Math.min(idx+1, periods.length-1);
+  const tbl = [...sn].map(s=>({
+    name:    s.replace(/[']/g,'').trim(),
+    latest:  subjects[s][idx],
+    prev:    subjects[s][prevIdx],
+    change:  subjects[s][idx] - subjects[s][prevIdx]
+  })).sort((a,b)=>b.latest-a.latest);
+
+  document.getElementById('summaryTable').innerHTML=`
+    <thead><tr>
+      <th>Subject</th>
+      <th>${periods[idx]}</th>
+      <th>${periods[prevIdx]} (prev)</th>
+      <th>Change</th>
+      <th>Trend</th>
+    </tr></thead>
+    <tbody>${tbl.map(r=>`<tr>
+      <td style="font-weight:500">${r.name}</td>
+      <td><span class="pill ${r.latest>=0?'pill-pos':'pill-neg'}">${r.latest.toFixed(2)}</span></td>
+      <td style="color:var(--muted)">${r.prev.toFixed(2)}</td>
+      <td style="color:${r.change>=0?'#1578C1':'#c0411e'};font-weight:600">${r.change>=0?'&#9650;':'&#9660;'} ${Math.abs(r.change).toFixed(2)}</td>
+      <td>${r.change>=0?'&#128200;':'&#128201;'}</td>
+    </tr>`).join('')}</tbody>`;
+}
+
+function setTablePeriod(offset, btn) {
+  _tablePeriodOffset = offset;
+  btn.closest('.toggle-group').querySelectorAll('.toggle-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  buildTable();
+}
+
+document.addEventListener('DOMContentLoaded', loadData);
+</script>
+</body>
+</html>
