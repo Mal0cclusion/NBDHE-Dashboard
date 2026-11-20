@@ -96,6 +96,32 @@
   .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:12px;font-weight:600;}
   .pill-pos{background:var(--green-light);color:var(--blue);}
   .pill-neg{background:var(--red-light);color:var(--red);}
+  /* SUMMARY SENTENCE */
+  .lead{font-size:15px;line-height:1.6;color:var(--navy);background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--gold);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.5rem;}
+  .lead b{font-weight:700;}
+  .section-note{font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.6;}
+
+  /* FOCUS CARDS */
+  .focus-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;}
+  .focus-card{border:1px solid var(--border);border-left:3px solid var(--red);border-radius:8px;padding:10px 12px;background:var(--red-light);}
+  .focus-name{font-size:13px;font-weight:700;color:var(--navy);margin-bottom:6px;}
+  .focus-row{display:flex;justify-content:space-between;font-size:12px;color:var(--body-text);line-height:1.8;}
+  .focus-row b{font-variant-numeric:tabular-nums;}
+  .focus-caution{font-size:10px;color:var(--muted);margin-top:4px;font-style:italic;}
+
+  /* EVENTS LIST */
+  .events-list{font-size:11px;color:var(--muted);margin-top:10px;padding-left:1.3rem;line-height:1.7;}
+
+  /* HEAT MAP */
+  .heat-wrap{overflow-x:auto;}
+  .heat{display:grid;gap:2px;align-items:center;min-width:560px;}
+  .heat-label{font-size:11px;color:var(--body-text);white-space:nowrap;padding-right:8px;text-align:right;}
+  .heat-label.overall{font-weight:700;color:var(--navy);}
+  .heat-cell{height:16px;border-radius:2px;}
+  .heat-year{font-size:9px;color:var(--muted);white-space:nowrap;overflow:visible;height:14px;}
+  .heat-key{display:flex;flex-wrap:wrap;gap:16px;font-size:11px;color:var(--muted);margin-bottom:10px;font-weight:500;}
+  .heat-key i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px;}
+
   .footer{padding:1.25rem 2.5rem;font-size:11px;background:var(--navy);color:rgba(255,255,255,0.45);line-height:1.8;display:none;}
 
   @media(max-width:640px){
@@ -143,7 +169,19 @@
 
 <!-- DASHBOARD -->
 <div class="main" id="mainContent">
+  <div class="lead" id="leadSentence"></div>
   <div class="metrics" id="metricsRow"></div>
+
+  <!-- WHERE TO FOCUS -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-title">Where to Focus</span>
+    </div>
+    <div class="chart-card">
+      <div class="section-note">Subjects below the national average <b>both</b> in the latest report <b>and</b> on average across the last 12 reports &mdash; persistent gaps, not one-report dips.</div>
+      <div class="focus-grid" id="focusGrid"></div>
+    </div>
+  </div>
 
   <!-- OVERALL TREND -->
   <div class="section">
@@ -163,6 +201,20 @@
       </div>
       <div style="position:relative;height:220px;">
         <canvas id="overallChart"></canvas>
+      </div>
+      <ol class="events-list" id="eventsList"></ol>
+    </div>
+  </div>
+
+  <!-- LATEST CHANGE -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-title">What Changed in the Latest Report</span>
+    </div>
+    <div class="chart-card">
+      <div class="section-note" id="changeNote"></div>
+      <div style="position:relative;height:360px;">
+        <canvas id="changeChart"></canvas>
       </div>
     </div>
   </div>
@@ -218,6 +270,22 @@
     </div>
   </div>
 
+  <!-- HEAT MAP -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-title">Every Subject Over Time</span>
+    </div>
+    <div class="chart-card">
+      <div class="heat-key">
+        <span><i style="background:#1578C1"></i>Above national</span>
+        <span><i style="background:#c0411e"></i>Below national</span>
+        <span><i style="background:#e4ecf4"></i>No subject breakdown</span>
+        <span>Stronger color = farther from national &middot; hover a cell for its value</span>
+      </div>
+      <div class="heat-wrap"><div class="heat" id="heatMap"></div></div>
+    </div>
+  </div>
+
 
 </div>
 
@@ -225,6 +293,8 @@
   * Subjects marked with an asterisk contain relatively few questions &mdash; interpret with caution. &nbsp;|&nbsp;
   D-values = standard deviations from national mean (0 = national average). &nbsp;|&nbsp;
   Fall cohort = Aug&ndash;Dec exam periods &nbsp;|&nbsp; Spring cohort = Jan&ndash;May exam periods.
+  &nbsp;|&nbsp; Reports with no subject breakdown (entered as 0 in every subject) are treated as missing. &nbsp;|&nbsp;
+  Event markers come from the Major Events tab; season dates are placed at Jan (Spring), Jul (Summer), Aug (Fall).
 </div>
 
 <script>
@@ -304,7 +374,54 @@ function parseWorkbook(wb) {
     else if (!name.toLowerCase().includes('students reported') && !name.startsWith('*')) { subjects[name]=vals; }
   }
   if (!Object.keys(subjects).length) throw new Error('Could not find subject data.');
-  return {periods, subjects, overall, studentCounts};
+
+  // Reports with no subject breakdown were entered as 0 in every subject — treat as missing, not as "at national average"
+  const sn = Object.keys(subjects);
+  periods.forEach((_, i) => {
+    if (sn.every(s => subjects[s][i] === 0 || subjects[s][i] === null)) sn.forEach(s => subjects[s][i] = null);
+  });
+
+  return {periods, subjects, overall, studentCounts, events: parseEvents(wb, periods)};
+}
+
+// ── Major Events sheet (optional) ─────────────────────────────
+// Date cells like "Summer 2021" / "Fall 2022" / "Spring 2023 ", or real Excel dates
+const SEASON_MONTH = {spring:1, summer:7, fall:8, autumn:8, winter:12};
+function periodEnd(period) {
+  const parts = String(period).split('-');
+  if (parts.length < 2) return null;
+  const [m, y] = parts[1].trim().split('/').map(Number);
+  return (m && !isNaN(y)) ? {m, y: 2000 + y} : null;
+}
+function parseEvents(wb, periods) {
+  const sheet = wb.Sheets['Major Events'];
+  if (!sheet) return [];
+  const rows = XLSX.utils.sheet_to_json(sheet, {header:1, defval:null}).slice(1);
+  return rows.filter(r => r && r[0] && r[1]).map(r => {
+    let m = null, y = null;
+    if (typeof r[0] === 'number') { const d = XLSX.SSF.parse_date_code(r[0]); m = d.m; y = d.y; }
+    else {
+      const hit = String(r[0]).match(/(spring|summer|fall|autumn|winter)\s*(\d{4})/i);
+      if (hit) { m = SEASON_MONTH[hit[1].toLowerCase()]; y = Number(hit[2]); }
+    }
+    return {when: String(r[0]).trim(), text: String(r[1]).trim(), m, y};
+  });
+}
+
+// ── Small helpers ─────────────────────────────────────────────
+const fmt = v => (v === null || v === undefined) ? '&mdash;' : (v > 0 ? '+' : '') + v.toFixed(2);
+const cleanName = s => s.replace(/[*']/g,'').trim();
+const isFew = s => s.includes('*');
+const mean = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : null;
+const validVals = vals => vals.filter(v => v !== null && v !== undefined);  // newest first
+
+function subjectStats(data) {
+  const {subjects} = data;
+  return Object.keys(subjects).map(s => {
+    const v = validVals(subjects[s]);
+    return {raw:s, name:cleanName(s), few:isFew(s), latest:v[0], prev:v[1], change:v[0]-v[1],
+            avg12:mean(v.slice(0,12)), avgAll:mean(v)};
+  });
 }
 
 // ── Render ────────────────────────────────────────────────────
@@ -343,7 +460,134 @@ function render(data) {
   // YoY
   buildYoY();
 
+  // New breakdowns
+  buildLead();
+  buildFocus();
+  buildChange();
+  buildHeatMap();
+  buildEventsList();
 }
+
+// ── Summary sentence ──────────────────────────────────────────
+function buildLead() {
+  const {periods, overall} = _data;
+  const valid = periods.map((p,i)=>({p, v:overall[i]})).filter(d => d.v !== null && Math.abs(d.v) < 10);
+  const lo = valid.reduce((a,b)=>b.v<a.v?b:a), hi = valid.reduce((a,b)=>b.v>a.v?b:a);
+  const ch = overall[0] - overall[1];
+  document.getElementById('leadSentence').innerHTML =
+    `In the latest report (<b>${periods[0]}</b>), the overall score was <b>${fmt(overall[0])}</b> vs. the national average, ` +
+    `<b style="color:${ch>=0?'var(--blue)':'var(--red)'}">${fmt(ch)}</b> from the previous report. ` +
+    `Across all reports it has ranged from <b>${fmt(lo.v)}</b> (${lo.p}) to <b>${fmt(hi.v)}</b> (${hi.p}).`;
+}
+
+// ── Where to focus ────────────────────────────────────────────
+function buildFocus() {
+  const rows = subjectStats(_data).filter(r => r.latest < 0 && r.avg12 < 0).sort((a,b)=>a.latest-b.latest);
+  const grid = document.getElementById('focusGrid');
+  if (!rows.length) { grid.innerHTML = '<div class="section-note">No subject is below national on both measures.</div>'; return; }
+  grid.innerHTML = rows.map(r => `
+    <div class="focus-card">
+      <div class="focus-name">${r.raw}</div>
+      <div class="focus-row"><span>Latest</span><b class="val-neg">${fmt(r.latest)}</b></div>
+      <div class="focus-row"><span>Avg, last 12 reports</span><b>${fmt(r.avg12)}</b></div>
+      <div class="focus-row"><span>Avg, all reports</span><b>${fmt(r.avgAll)}</b></div>
+      ${r.few ? '<div class="focus-caution">Few exam questions &mdash; interpret with caution</div>' : ''}
+    </div>`).join('');
+}
+
+// ── Latest-report change ──────────────────────────────────────
+let CC = null;
+function buildChange() {
+  const {periods} = _data;
+  const rows = subjectStats(_data).sort((a,b)=>a.change-b.change);
+  const worst = rows[0], best = rows[rows.length-1];
+  document.getElementById('changeNote').innerHTML =
+    `Change from ${periods[1]} to ${periods[0]}. Largest drop: <b>${worst.raw}</b> (<b class="val-neg">${fmt(worst.change)}</b>). ` +
+    `Largest gain: <b>${best.raw}</b> (<b class="${best.change>=0?'val-pos':'val-neg'}">${fmt(best.change)}</b>). ` +
+    `Shifts this size usually reflect which graduates entered and left the 12-month window.`;
+  if (CC) CC.destroy();
+  const ext = Math.max(0.5, ...rows.map(r=>Math.abs(r.change)));
+  CC = new Chart(document.getElementById('changeChart'), {
+    type:'bar',
+    data:{labels:rows.map(r=>r.name+(r.few?'*':'')), datasets:[{
+      data:rows.map(r=>Number(r.change.toFixed(2))),
+      backgroundColor:rows.map(r=>r.change>=0?'rgba(21,120,193,0.85)':'rgba(192,65,30,0.8)'),
+      borderRadius:4, label:'Change'
+    }]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{...TT,callbacks:{
+        title:i=>rows[i[0].dataIndex].raw,
+        label:i=>{const r=rows[i[0].dataIndex];return[` Previous: ${r.prev.toFixed(2)}`,` Latest: ${r.latest.toFixed(2)}`,` Change: ${r.change>=0?'+':''}${r.change.toFixed(2)}`];}
+      }}},
+      scales:{
+        x:{min:-Math.ceil(ext*2)/2,max:Math.ceil(ext*2)/2,ticks:{color:'#6b7a8d',font:{size:10}},grid:{color:'rgba(0,51,102,0.07)'}},
+        y:{ticks:{color:'#444444',font:{size:11},autoSkip:false}}
+      }
+    }
+  });
+}
+
+// ── Heat map ──────────────────────────────────────────────────
+function buildHeatMap() {
+  const {periods, subjects, overall} = _data;
+  const order = periods.map((p,i)=>i).reverse();       // oldest → newest
+  const rowsDef = [{label:'NBDHE (Overall)', vals:overall, cls:'overall'}]
+    .concat(Object.keys(subjects).map(s => ({label:s, vals:subjects[s], cls:''})));
+  const el = document.getElementById('heatMap');
+  el.style.gridTemplateColumns = `max-content repeat(${order.length}, minmax(6px, 1fr))`;
+  const color = v => {
+    if (v === null || v === undefined || Math.abs(v) >= 10) return '#e4ecf4';
+    const a = (0.12 + 0.88*Math.min(1, Math.abs(v)/2)).toFixed(2);
+    return v >= 0 ? `rgba(21,120,193,${a})` : `rgba(192,65,30,${a})`;
+  };
+  let html = '';
+  rowsDef.forEach(r => {
+    html += `<div class="heat-label ${r.cls}">${r.label}</div>`;
+    order.forEach(i => {
+      const v = r.vals[i];
+      const tip = `${cleanName(r.label)} | ${periods[i]} | ${v===null||v===undefined?'No subject breakdown':(v>0?'+':'')+v.toFixed(2)}`;
+      html += `<div class="heat-cell" style="background:${color(v)}" title="${tip}"></div>`;
+    });
+  });
+  // Year labels under January-ending reports
+  html += '<div></div>';
+  order.forEach(i => { const e = periodEnd(periods[i]); html += `<div class="heat-year">${e && e.m===1 ? e.y : ''}</div>`; });
+  el.innerHTML = html;
+}
+
+// ── Events list under the overall chart ───────────────────────
+function buildEventsList() {
+  const ev = _data.events || [];
+  document.getElementById('eventsList').innerHTML = ev.map(e => `<li>${e.when}: ${e.text}</li>`).join('');
+}
+
+// Draws numbered dashed lines on the overall chart at each Major Event
+const eventLinesPlugin = {
+  id:'eventLines',
+  afterDatasetsDraw(chart) {
+    const ev = (_data && _data.events) || [];
+    const labels = chart.data.labels;
+    if (!ev.length || !labels.length) return;
+    const ends = labels.map(periodEnd);
+    const {ctx, chartArea:{top, bottom}, scales:{x}} = chart;
+    ev.forEach((e, n) => {
+      if (!e.m || !e.y) return;
+      const target = e.y*12 + e.m;
+      let best = -1, bestDiff = Infinity;
+      ends.forEach((d, i) => { if (!d) return; const diff = Math.abs(d.y*12 + d.m - target); if (diff < bestDiff) { bestDiff = diff; best = i; } });
+      if (best < 0 || bestDiff > 2) return;  // event outside the plotted range
+      const px = x.getPixelForValue(best);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0,51,102,0.45)'; ctx.setLineDash([3,3]); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(px, top + 10); ctx.lineTo(px, bottom); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle = '#003366';
+      ctx.beginPath(); ctx.arc(px, top + 4, 7, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = "600 10px Gantari, sans-serif"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(n+1), px, top + 4);
+      ctx.restore();
+    });
+  }
+};
 
 // ── Overall chart ─────────────────────────────────────────────
 function buildOverallChart() {
@@ -374,7 +618,8 @@ function buildOverallChart() {
           pointRadius:5,
         }]
       },
-      options:{responsive:true,maintainAspectRatio:false,
+      plugins:[eventLinesPlugin],
+      options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:14}},
         plugins:{legend:{display:false},tooltip:{...TT,callbacks:{
           title:i=>i[0].label,
           label:i=>{
@@ -409,7 +654,8 @@ function buildOverallChart() {
            pointBackgroundColor:SPRING_COLOR, spanGaps:false},
         ]
       },
-      options:{responsive:true,maintainAspectRatio:false,
+      plugins:[eventLinesPlugin],
+      options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:14}},
         plugins:{legend:{display:false},tooltip:TT},
         scales:{
           x:{ticks:{color:'#6b7a8d',font:{size:9},maxRotation:45,autoSkip:true,maxTicksLimit:18},grid:{display:false}},
@@ -495,7 +741,7 @@ function buildSubjectChart() {
   } else {
     wrap.style.height='240px';
     // table stays visible when switching to individual subject view
-    const pts=periods.map((p,i)=>{const v=subjects[_subjectMode][i];return(v!==null&&Math.abs(v)<10)?{p,v}:null;}).filter(Boolean).reverse();
+    const pts=periods.map((p,i)=>{const v=subjects[_subjectMode][i];return(v!==null&&v!==undefined&&Math.abs(v)<10)?{p,v}:null;}).filter(Boolean).reverse();
     SC = new Chart(ctx, {
       type:'line',
       data:{labels:pts.map(d=>d.p),datasets:[{
